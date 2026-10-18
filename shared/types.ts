@@ -143,3 +143,16 @@ export interface FundPlan extends ServerTimestamps {
   targetAmount: number
   transactions: FundTransaction[]
 }
+
+// === 預計費用紀錄（獨立功能，不與其他模組連動） ===
+
+export interface PlannedItem extends ServerTimestamps {
+  id: string
+  type: 'income' | 'expense'
+  name: string
+  amount: number
+  /** 預計日期 YYYY-MM-DD */
+  date: string
+  /** 備註（選填） */
+  note?: string
+}

@@ -7,6 +7,7 @@ import { FixedExpensesModel } from './models/FixedExpenses.js'
 import { EmergencyGoalModel } from './models/EmergencyGoal.js'
 import { PocketMoneyModel } from './models/PocketMoney.js'
 import { EntertainmentFundModel, InvestmentPlanModel } from './models/FundPlan.js'
+import { PlannedItemModel } from './models/PlannedItem.js'
 
 export const app = express()
 
@@ -22,6 +23,7 @@ api.use(requireToken, ensureDb)
 api.use('/salary-allocations', collectionRouter(SalaryAllocationModel))
 api.use('/emergency-goals', collectionRouter(EmergencyGoalModel))
 api.use('/pocket-money', collectionRouter(PocketMoneyModel))
+api.use('/planned-items', collectionRouter(PlannedItemModel))
 api.use('/fixed-expenses', singletonRouter(FixedExpensesModel, { monthly: [], annual: [] }))
 api.use(
   '/investment-plan',

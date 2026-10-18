@@ -4,8 +4,17 @@ import { useFixedExpensesStore } from './fixedExpenses'
 import { useEmergencyFundStore } from './emergencyFund'
 import { usePocketMoneyStore } from './pocketMoney'
 import { useEntertainmentStore, useInvestmentStore } from './fundPlans'
+import { usePlannedStore } from './planned'
 
-export { useSalaryStore, useFixedExpensesStore, useEmergencyFundStore, usePocketMoneyStore, useInvestmentStore, useEntertainmentStore }
+export {
+  useSalaryStore,
+  useFixedExpensesStore,
+  useEmergencyFundStore,
+  usePocketMoneyStore,
+  useInvestmentStore,
+  useEntertainmentStore,
+  usePlannedStore
+}
 
 // 載入期間各 store 資料尚未一致，暫停固定支出快照同步
 let loading = false
@@ -38,7 +47,8 @@ export async function loadAllStores() {
       useEmergencyFundStore().load(),
       usePocketMoneyStore().load(),
       useInvestmentStore().load(),
-      useEntertainmentStore().load()
+      useEntertainmentStore().load(),
+      usePlannedStore().load()
     ])
   } finally {
     loading = false

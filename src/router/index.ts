@@ -76,6 +76,12 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/planned',
+    name: 'planned',
+    component: () => import('@/views/PlannedView.vue'),
+    meta: { title: '預計費用' }
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
