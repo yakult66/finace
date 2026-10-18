@@ -27,6 +27,10 @@ export interface FixedExpenseSnapshotItem {
   name: string
   amount: number
   linkedLargeExpenseId?: string
+  /** 來源的固定支出項目 id，用來與目前的固定支出清單同步 */
+  sourceId?: string
+  /** 在歷史紀錄手動修改過的金額，同步固定支出清單時保留不覆蓋 */
+  locked?: boolean
 }
 
 export interface SalaryAllocation extends ServerTimestamps {

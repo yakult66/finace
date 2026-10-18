@@ -9,7 +9,7 @@ import { useSalaryAllocationForm } from './useSalaryAllocationForm'
 import type { SalaryMoneyField } from './useSalaryAllocationForm'
 import { formatMoney, formatSignedMoney, fromDateString, toDateString } from '@/composables/useFormat'
 
-const { draft, totalFixedExpenses, netAmount, isLoading, isSaved, errors, saveAllocation } = useSalaryAllocationForm()
+const { draft, netAmount, isLoading, isSaved, errors, saveAllocation } = useSalaryAllocationForm()
 
 const moneyFields: { key: SalaryMoneyField; label: string; dot: string }[] = [
   { key: 'income', label: '薪資收入', dot: 'bg-emerald-500' },
@@ -128,7 +128,7 @@ const saveLabel = computed(() => (isLoading.value ? '儲存中...' : isSaved.val
               <span class="text-sm font-medium text-slate-500 flex items-center gap-1">
                 固定費用 <i class="pi pi-lock text-xs text-slate-400"></i>
               </span>
-              <span class="text-sm font-medium text-rose-500">{{ formatSignedMoney(totalFixedExpenses, '-') }}</span>
+              <span class="text-sm font-medium text-rose-500">{{ formatSignedMoney(draft.fixedExpenses || 0, '-') }}</span>
             </div>
 
             <div class="flex items-center justify-between">

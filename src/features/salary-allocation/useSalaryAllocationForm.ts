@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import type { SalaryAllocation } from '@shared/types'
 import { useSalaryStore, useFixedExpensesStore, useEmergencyFundStore, usePocketMoneyStore } from '@/stores'
+import { mergeFixedSnapshot } from '@/stores/fixedExpenses'
 import { monthKey, todayString } from '@/composables/useFormat'
 
 /** 表單草稿：尚未儲存前沒有 id */
@@ -32,7 +33,7 @@ export function useSalaryAllocationForm() {
   const pocket = usePocketMoneyStore()
   const toast = useToast()
   const { records } = storeToRefs(salary)
-  const { fixedExpenses, totalFixedExpenses } = storeToRefs(fixed)
+  const { fixedExpenses } = storeToRefs(fixed)
   const { activeMonthlyDepositTotal } = storeToRefs(emergency)
 
   const isLoading = ref(false)
@@ -72,14 +73,19 @@ export function useSalaryAllocationForm() {
     return unspent + netAmountOf(prevRecord)
   }
 
-  // 跨模組連動：沒有細項快照時，自動同步固定支出總和
-  watch(
-    totalFixedExpenses,
-    total => {
-      if (!draft.value.fixedExpensesSnapshot?.length) draft.value.fixedExpenses = total
-    },
-    { immediate: true }
-  )
+  // 跨模組連動：新月份或本月之後的紀錄，細項快照與總額跟著目前的固定支出清單更新；過去月份保留當時的快照
+  const syncFixedSnapshot = () => {
+    const d = draft.value
+    const year = draftYear.value
+    const month = Number(d.month)
+    const saved = salary.findByMonth(year, month)
+    if (saved && !salary.followsCurrentFixedExpenses(year, month)) return
+
+    d.fixedExpensesSnapshot = mergeFixedSnapshot(d.fixedExpensesSnapshot ?? [], fixedExpenses.value, !!saved)
+    d.fixedExpenses = d.fixedExpensesSnapshot.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+  }
+
+  watch(fixedExpenses, syncFixedSnapshot, { deep: true, immediate: true })
 
   // 跨模組連動：自動同步緊急備用金每月存入總額
   watch(
@@ -173,17 +179,13 @@ export function useSalaryAllocationForm() {
         investment: 0,
         consumerFund: 0,
         allowance: 0,
-        fixedExpenses: totalFixedExpenses.value,
+        fixedExpenses: 0,
         emergencyFund: draft.value.emergencyFund,
         previousBalance: calculatedPrevBalance,
-        fixedExpensesSnapshot: fixedExpenses.value.map(item => ({
-          id: crypto.randomUUID(),
-          name: item.name,
-          amount: item.amount,
-          linkedLargeExpenseId: item.linkedLargeExpenseId
-        }))
+        fixedExpensesSnapshot: []
       }
     }
+    syncFixedSnapshot()
     isSaved.value = false
   }
 
@@ -217,7 +219,6 @@ export function useSalaryAllocationForm() {
 
   return {
     draft,
-    totalFixedExpenses,
     activeMonthlyDepositTotal,
     isLoading,
     isSaved,

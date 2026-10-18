@@ -67,15 +67,28 @@ const closeEditModal = () => {
   isEditModalOpen.value = false
 }
 
-// 細項金額變更時，自動更新固定費用總和
-const onSnapshotAmountChange = (item: FixedExpenseSnapshotItem, value: number | null) => {
-  item.amount = value ?? 0
+const recalcFixedTotal = () => {
   if (editingDraft.value?.fixedExpensesSnapshot) {
     editingDraft.value.fixedExpenses = editingDraft.value.fixedExpensesSnapshot.reduce(
       (sum, i) => sum + (Number(i.amount) || 0),
       0
     )
   }
+}
+
+// 細項金額變更時，固定該金額（之後固定支出清單變動不覆蓋），並更新固定費用總和
+const onSnapshotAmountChange = (item: FixedExpenseSnapshotItem, value: number | null) => {
+  item.amount = value ?? 0
+  item.locked = true
+  recalcFixedTotal()
+}
+
+// 取消固定：一般項目恢復為目前固定支出清單的金額
+const unlockSnapshotItem = (item: FixedExpenseSnapshotItem) => {
+  item.locked = false
+  const source = fixed.fixedExpenses.find(f => f.id === item.sourceId)
+  if (source && !item.linkedLargeExpenseId) item.amount = source.amount
+  recalcFixedTotal()
 }
 
 // 儲存編輯後的歷史紀錄
@@ -242,7 +255,10 @@ const deleteRecord = (id: string) => {
               class="bg-white px-3 py-2 rounded-xl border border-slate-200/60 flex items-center justify-between gap-2 text-xs"
             >
               <span class="text-slate-600 font-medium truncate">{{ item.name }}</span>
-              <span class="text-slate-800 font-bold">{{ formatMoney(item.amount) }}</span>
+              <span class="text-slate-800 font-bold shrink-0">
+                <i v-if="item.locked" class="pi pi-lock text-[10px] text-amber-500 mr-1" title="已固定金額"></i>
+                {{ formatMoney(item.amount) }}
+              </span>
             </div>
           </div>
         </div>
@@ -289,7 +305,9 @@ const deleteRecord = (id: string) => {
           class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3"
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="text-xs font-bold text-slate-700">當月固定項目細項快照 (修改金額自動算入總計與大額連動)</span>
+            <span class="text-xs font-bold text-slate-700">
+              當月固定項目細項快照 (修改過的金額會固定，不再跟著固定支出清單變動)
+            </span>
             <span class="text-xs font-bold text-rose-500">固定總計: {{ formatMoney(editingDraft.fixedExpenses) }}</span>
           </div>
 
@@ -300,6 +318,18 @@ const deleteRecord = (id: string) => {
               class="bg-white p-2.5 rounded-xl border border-slate-200/60 flex items-center justify-between gap-2 text-xs"
             >
               <label :for="`edit-snapshot-${index}`" class="text-slate-700 font-medium truncate">{{ item.name }}</label>
+              <Button
+                v-if="item.locked"
+                title="已固定金額，點擊取消固定"
+                icon="pi pi-lock"
+                severity="warn"
+                text
+                rounded
+                size="small"
+                class="ml-auto shrink-0"
+                aria-label="取消固定金額"
+                @click="unlockSnapshotItem(item)"
+              />
               <InputNumber
                 :model-value="item.amount"
                 :input-id="`edit-snapshot-${index}`"

@@ -1,6 +1,6 @@
 import { computed, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { FixedExpense, FixedExpensesDoc, LargeExpense } from '@shared/types'
+import type { FixedExpense, FixedExpenseSnapshotItem, FixedExpensesDoc, LargeExpense } from '@shared/types'
 import { useSyncedDocument } from '@/services/sync'
 import { readCache, writeCache } from '@/services/cache'
 import { monthKey } from '@/composables/useFormat'
@@ -34,6 +34,43 @@ function paymentMonthFor(targetMonth: number): string {
   const now = new Date()
   const year = targetMonth <= now.getMonth() + 1 ? now.getFullYear() + 1 : now.getFullYear()
   return monthKey(year, targetMonth)
+}
+
+/**
+ * 依目前的固定支出清單更新薪資紀錄的細項快照：新增的項目補上、刪除的項目移除、名稱與金額跟著更新。
+ * keepLinkedAmounts：已儲存的紀錄保留大額支出連動項目的金額（發薪日已依該金額存入，結算後均攤金額會重算）
+ * 在歷史紀錄手動固定（locked）的項目一律保留金額
+ */
+export function mergeFixedSnapshot(
+  snapshot: FixedExpenseSnapshotItem[],
+  live: FixedExpense[],
+  keepLinkedAmounts = false
+): FixedExpenseSnapshotItem[] {
+  const unmatched = [...snapshot]
+  const take = (match: (s: FixedExpenseSnapshotItem) => boolean) => {
+    const index = unmatched.findIndex(match)
+    return index === -1 ? undefined : unmatched.splice(index, 1)[0]
+  }
+
+  return live.map(item => {
+    // 舊快照沒有 sourceId，改以連動來源或名稱比對
+    const existing =
+      take(s => s.sourceId === item.id) ??
+      take(s =>
+        !s.sourceId && item.linkedLargeExpenseId
+          ? s.linkedLargeExpenseId === item.linkedLargeExpenseId
+          : !s.sourceId && !s.linkedLargeExpenseId && s.name === item.name
+      )
+    const keepAmount = existing && (existing.locked || (keepLinkedAmounts && item.linkedLargeExpenseId))
+    return {
+      id: existing?.id ?? crypto.randomUUID(),
+      sourceId: item.id,
+      name: item.name,
+      amount: keepAmount ? existing.amount : item.amount,
+      linkedLargeExpenseId: item.linkedLargeExpenseId,
+      ...(existing?.locked && { locked: true })
+    }
+  })
 }
 
 function monthlyShare(exp: LargeExpense): number {

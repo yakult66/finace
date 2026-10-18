@@ -15,7 +15,7 @@ const SalaryAllocationSchema = new Schema<SalaryAllocation>(
     previousBalance: { type: Number, default: 0 },
     fixedExpensesSnapshot: [
       new Schema(
-        { id: String, name: String, amount: Number, linkedLargeExpenseId: String },
+        { id: String, name: String, amount: Number, linkedLargeExpenseId: String, sourceId: String, locked: Boolean },
         { _id: false }
       )
     ]
