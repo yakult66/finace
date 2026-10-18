@@ -49,6 +49,8 @@ export interface SalaryAllocation extends ServerTimestamps {
   emergencyFund: number
   /** 上月結餘快照 */
   previousBalance: number
+  /** 從本月淨額撥入零用金的總額（由零用金「動用本月淨額」紀錄加總而來） */
+  netDraw?: number
   /** 當月固定支出細項快照 */
   fixedExpensesSnapshot?: FixedExpenseSnapshotItem[]
 }
@@ -116,7 +118,8 @@ export type PocketCategory = (typeof POCKET_CATEGORIES)[number]
 
 export interface PocketMoneyTransaction {
   id: string
-  type: 'income' | 'expense'
+  /** netDraw：從本月淨額撥入零用金 */
+  type: 'income' | 'expense' | 'netDraw'
   category: PocketCategory
   name: string
   amount: number

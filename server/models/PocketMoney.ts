@@ -5,7 +5,7 @@ import type { PocketMoneyMonthRecord, PocketMoneyTransaction } from '../../share
 const PocketMoneyTransactionSchema = new Schema<PocketMoneyTransaction>(
   {
     id: { type: String, required: true },
-    type: { type: String, enum: ['income', 'expense'], required: true },
+    type: { type: String, enum: ['income', 'expense', 'netDraw'], required: true },
     category: { type: String, enum: POCKET_CATEGORIES, required: true },
     name: { type: String, required: true },
     amount: { type: Number, required: true },

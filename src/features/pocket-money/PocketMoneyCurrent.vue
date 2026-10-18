@@ -31,12 +31,24 @@ const allocatedAllowance = computed(() => store.allocatedFor(currentRecord.value
 const unspentAllowance = computed(() => store.unspentAllowance(currentRecord.value))
 const categoryStats = computed(() => store.categoryStatistics(currentRecord.value.transactions))
 
+// 本月淨額還能動用的金額（沒有薪資紀錄時為 null）
+const availableNet = computed(() => store.availableNetFor(currentYear, currentMonth))
+
 // 新增明細表單
 type TxType = PocketMoneyTransaction['type']
 const typeOptions: { label: string; value: TxType }[] = [
   { label: '支出 (-)', value: 'expense' },
-  { label: '收入 (+)', value: 'income' }
+  { label: '收入 (+)', value: 'income' },
+  { label: '動用本月淨額 (+)', value: 'netDraw' }
 ]
+const isNetDraw = computed(() => formType.value === 'netDraw')
+
+const txBadge = (type: TxType) =>
+  ({
+    expense: { text: '支', class: 'bg-rose-50 text-rose-600' },
+    income: { text: '收', class: 'bg-emerald-50 text-emerald-600' },
+    netDraw: { text: '淨', class: 'bg-indigo-50 text-indigo-600' }
+  })[type]
 const categoryOptions = [...POCKET_CATEGORIES]
 
 const formType = ref<TxType>('expense')
@@ -55,7 +67,7 @@ const formDateModel = computed<Date>({
 
 const handleAdd = () => {
   formError.value = ''
-  if (!formName.value.trim()) {
+  if (!isNetDraw.value && !formName.value.trim()) {
     formError.value = '請輸入項目名稱'
     return
   }
@@ -63,11 +75,22 @@ const handleAdd = () => {
     formError.value = '請輸入大於 0 的金額'
     return
   }
+  if (isNetDraw.value) {
+    if (availableNet.value === null) {
+      formError.value = '本月尚未儲存薪資配置，無法動用本月淨額'
+      return
+    }
+    if (formAmount.value > availableNet.value) {
+      formError.value = `動用金額不可超過本月淨額 ${formatMoney(availableNet.value)}`
+      return
+    }
+  }
 
   store.addTransaction(currentYear, currentMonth, {
     type: formType.value,
-    category: formCategory.value,
-    name: formName.value.trim(),
+    // 動用本月淨額不屬於花費類別，統一記為「其他」且不列入類別統計
+    category: isNetDraw.value ? '其他' : formCategory.value,
+    name: formName.value.trim() || '動用本月淨額',
     amount: formAmount.value,
     date: formDate.value
   })
@@ -80,7 +103,10 @@ const handleAdd = () => {
 const handleDelete = (tx: PocketMoneyTransaction) => {
   confirm.require({
     header: '刪除確認',
-    message: `確定要刪除「${tx.name}」這筆紀錄嗎？`,
+    message:
+      tx.type === 'netDraw'
+        ? `確定要刪除「${tx.name}」嗎？金額 ${formatMoney(tx.amount)} 將退回本月淨額。`
+        : `確定要刪除「${tx.name}」這筆紀錄嗎？`,
     icon: 'pi pi-exclamation-triangle',
     rejectProps: { label: '取消', severity: 'secondary', outlined: true, size: 'small' },
     acceptProps: { label: '刪除', severity: 'danger', size: 'small' },
@@ -102,6 +128,9 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
         <div class="text-2xl font-bold text-slate-800">
           {{ formatMoney(allocatedAllowance) }}
         </div>
+        <p v-if="categoryStats.totalNetDraw > 0" class="text-xs text-indigo-500 font-medium mt-1">
+          + 動用本月淨額 {{ formatMoney(categoryStats.totalNetDraw) }}
+        </p>
         <p v-if="allocatedAllowance === 0" class="text-xs text-amber-600 font-medium mt-1">
           💡 請至「當月薪資配置」設定零用金並點選儲存
         </p>
@@ -185,11 +214,17 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
           size="small"
           class="w-full sm:w-auto"
         />
+        <p v-if="isNetDraw" class="text-xs font-medium pt-1" :class="availableNet === null ? 'text-amber-600' : 'text-indigo-500'">
+          <template v-if="availableNet === null">💡 本月尚未儲存薪資配置，無法動用本月淨額</template>
+          <template v-else>
+            本月淨額目前可動用 {{ formatMoney(availableNet) }}，動用後會加入本月零用金並從本月淨額扣除
+          </template>
+        </p>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
         <!-- 類別 (只能從固定選單選) -->
-        <div class="space-y-1">
+        <div v-if="!isNetDraw" class="space-y-1">
           <label for="pm-category" class="text-xs font-semibold text-slate-600">固定類別</label>
           <Select
             v-model="formCategory"
@@ -201,12 +236,12 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
         </div>
 
         <!-- 名稱 -->
-        <div class="space-y-1 col-span-1 sm:col-span-2">
-          <label for="pm-name" class="text-xs font-semibold text-slate-600">項目名稱</label>
+        <div class="space-y-1 col-span-1 sm:col-span-2" :class="{ 'lg:col-span-3': isNetDraw }">
+          <label for="pm-name" class="text-xs font-semibold text-slate-600">{{ isNetDraw ? '動用原因 (選填)' : '項目名稱' }}</label>
           <InputText
             id="pm-name"
             v-model="formName"
-            placeholder="例如: 午餐便當 / 悠遊卡加值"
+            :placeholder="isNetDraw ? '例如: 零用金不夠、聚餐' : '例如: 午餐便當 / 悠遊卡加值'"
             size="small"
             fluid
             @keyup.enter="handleAdd"
@@ -273,15 +308,16 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
           <div class="flex items-center gap-3">
             <span
               class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              :class="tx.type === 'expense' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'"
+              :class="txBadge(tx.type).class"
             >
-              {{ tx.type === 'expense' ? '支' : '收' }}
+              {{ txBadge(tx.type).text }}
             </span>
 
             <div>
               <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
                 {{ tx.name }}
-                <Tag :value="tx.category" severity="secondary" class="text-xs" />
+                <Tag v-if="tx.type === 'netDraw'" value="動用本月淨額" severity="info" class="text-xs" />
+                <Tag v-else :value="tx.category" severity="secondary" class="text-xs" />
               </div>
               <div class="text-xs text-slate-400 mt-0.5">
                 {{ tx.date }}
@@ -292,7 +328,7 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
           <div class="flex items-center gap-4">
             <span
               class="text-base font-extrabold"
-              :class="tx.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'"
+              :class="{ expense: 'text-rose-600', income: 'text-emerald-600', netDraw: 'text-indigo-600' }[tx.type]"
             >
               {{ formatSignedMoney(tx.amount, tx.type === 'expense' ? '-' : '+') }}
             </span>

@@ -9,7 +9,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import type { FixedExpenseSnapshotItem, SalaryAllocation } from '@shared/types'
 import { useSalaryStore, useFixedExpensesStore } from '@/stores'
-import { netAmountOf } from '@/features/salary-allocation/useSalaryAllocationForm'
+import { netAmountOf } from '@/stores/salary'
 import { formatMoney } from '@/composables/useFormat'
 
 type EditableField = 'income' | 'investment' | 'consumerFund' | 'allowance' | 'emergencyFund'
@@ -28,13 +28,14 @@ const sortedHistory = computed(() => {
   return [...records.value].sort((a, b) => (sortOrder.value === 'desc' ? abs(b) - abs(a) : abs(a) - abs(b)))
 })
 
-const summaryFields: { key: EditableField | 'fixedExpenses'; label: string; card: string; text: string }[] = [
+const summaryFields: { key: EditableField | 'fixedExpenses' | 'netDraw'; label: string; card: string; text: string }[] = [
   { key: 'income', label: '薪資收入', card: 'bg-emerald-50/60 border-emerald-100/50', text: 'text-emerald-600' },
   { key: 'investment', label: '投資規劃', card: 'bg-amber-50/60 border-amber-100/50', text: 'text-amber-600' },
   { key: 'consumerFund', label: '消費基金', card: 'bg-purple-50/60 border-purple-100/50', text: 'text-purple-600' },
   { key: 'allowance', label: '零用金', card: 'bg-indigo-50/60 border-indigo-100/50', text: 'text-indigo-600' },
   { key: 'fixedExpenses', label: '固定支出', card: 'bg-rose-50/60 border-rose-100/50', text: 'text-rose-600' },
-  { key: 'emergencyFund', label: '緊急備用金', card: 'bg-blue-50/60 border-blue-100/50', text: 'text-blue-600' }
+  { key: 'emergencyFund', label: '緊急備用金', card: 'bg-blue-50/60 border-blue-100/50', text: 'text-blue-600' },
+  { key: 'netDraw', label: '動用本月淨額', card: 'bg-violet-50/60 border-violet-100/50', text: 'text-violet-600' }
 ]
 
 const editFields: { key: EditableField; label: string }[] = [
@@ -109,7 +110,8 @@ const handleSaveEdit = async () => {
     }
 
     try {
-      await salary.save(updated)
+      // 動用本月淨額由零用金紀錄維護，以目前紀錄為準
+      await salary.save({ ...updated, netDraw: Number(oldRecord.netDraw || 0) })
     } catch (e) {
       console.error('儲存失敗:', e)
       toast.add({ severity: 'error', summary: '儲存失敗', detail: '請稍後再試', life: 3000 })
@@ -213,13 +215,13 @@ const deleteRecord = (id: string) => {
         </div>
 
         <!-- 數據卡片區域 -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-4 text-center">
+        <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mt-4 text-center">
           <div v-for="field in summaryFields" :key="field.key" class="p-3 rounded-2xl border" :class="field.card">
             <div class="text-xs font-medium mb-0.5" :class="field.text">{{ field.label }}</div>
             <div class="text-sm font-bold text-slate-800">{{ formatMoney(record[field.key]) }}</div>
           </div>
 
-          <div class="bg-slate-100/80 p-3 rounded-2xl border border-slate-200/60 col-span-2 sm:col-span-1">
+          <div class="bg-slate-100/80 p-3 rounded-2xl border border-slate-200/60">
             <div class="text-xs text-slate-500 font-medium mb-0.5">本月淨額</div>
             <div
               class="text-sm font-extrabold"
@@ -344,6 +346,18 @@ const deleteRecord = (id: string) => {
               />
             </div>
           </div>
+        </div>
+
+        <!-- 動用本月淨額（由零用金紀錄維護，唯讀） -->
+        <div
+          v-if="editingDraft.netDraw"
+          class="bg-violet-50/50 px-4 py-3 rounded-2xl border border-violet-100 flex items-center justify-between text-xs"
+        >
+          <span class="font-semibold text-violet-700 flex items-center gap-1">
+            動用本月淨額 <i class="pi pi-lock text-[10px]"></i>
+            <span class="font-normal text-violet-500">(至零用金收支管理調整)</span>
+          </span>
+          <span class="font-bold text-violet-700">-{{ formatMoney(editingDraft.netDraw) }}</span>
         </div>
 
         <!-- 試算淨額 -->

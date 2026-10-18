@@ -5,9 +5,15 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { usePocketMoneyStore } from '@/stores'
 import { formatMoney, formatSignedMoney } from '@/composables/useFormat'
-import type { PocketMoneyMonthRecord } from '@shared/types'
+import type { PocketMoneyMonthRecord, PocketMoneyTransaction } from '@shared/types'
 
 const store = usePocketMoneyStore()
+
+const txTag: Record<PocketMoneyTransaction['type'], { label: string; severity: string }> = {
+  expense: { label: '支出', severity: 'danger' },
+  income: { label: '收入', severity: 'success' },
+  netDraw: { label: '動用本月淨額', severity: 'info' }
+}
 // 依月份降冪排序 (新月份在前)
 const { sortedRecords } = storeToRefs(store)
 
@@ -70,6 +76,9 @@ const toggleExpand = (record: PocketMoneyMonthRecord) => {
           <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <div class="text-xs text-slate-500 font-medium mb-0.5">薪資帶入零用金</div>
             <div class="text-sm font-bold text-slate-800">{{ formatMoney(store.allocatedFor(record)) }}</div>
+            <div v-if="store.netDrawOf(record) > 0" class="text-xs text-indigo-500 font-medium mt-0.5">
+              + 動用淨額 {{ formatMoney(store.netDrawOf(record)) }}
+            </div>
           </div>
 
           <div class="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100/50">
@@ -135,20 +144,16 @@ const toggleExpand = (record: PocketMoneyMonthRecord) => {
               class="bg-white p-3 rounded-xl border border-slate-200/60 flex items-center justify-between text-xs"
             >
               <div class="flex items-center gap-2">
-                <Tag
-                  :value="tx.type === 'expense' ? '支出' : '收入'"
-                  :severity="tx.type === 'expense' ? 'danger' : 'success'"
-                  class="text-xs"
-                />
+                <Tag :value="txTag[tx.type].label" :severity="txTag[tx.type].severity" class="text-xs" />
                 <span class="font-bold text-slate-800">{{ tx.name }}</span>
-                <Tag :value="tx.category" severity="secondary" class="text-xs" />
+                <Tag v-if="tx.type !== 'netDraw'" :value="tx.category" severity="secondary" class="text-xs" />
               </div>
 
               <div class="flex items-center gap-3">
                 <span class="text-slate-400 text-xs">{{ tx.date }}</span>
                 <span
                   class="font-extrabold"
-                  :class="tx.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'"
+                  :class="{ expense: 'text-rose-600', income: 'text-emerald-600', netDraw: 'text-indigo-600' }[tx.type]"
                 >
                   {{ formatSignedMoney(tx.amount, tx.type === 'expense' ? '-' : '+') }}
                 </span>

@@ -14,6 +14,21 @@ function normalize(items: unknown): SalaryAllocation[] {
   return (list as SalaryAllocation[]).map(r => (r.id ? r : { ...r, id: crypto.randomUUID() }))
 }
 
+/** 淨額 = (收入 + 上月結餘) - (固定支出 + 緊急備用金 + 投資理財 + 消費基金 + 零用金 + 動用本月淨額) */
+export function netAmountOf(record: Omit<SalaryAllocation, 'id'>): number {
+  const n = (value: number | null | undefined) => Number(value || 0)
+  return (
+    n(record.income) +
+    n(record.previousBalance) -
+    (n(record.fixedExpenses) +
+      n(record.emergencyFund) +
+      n(record.investment) +
+      n(record.consumerFund) +
+      n(record.allowance) +
+      n(record.netDraw))
+  )
+}
+
 export const useSalaryStore = defineStore('salary', () => {
   const { items: records, load, save, remove } = useSyncedCollection<SalaryAllocation>(
     'finance_salary_allocation',
@@ -66,6 +81,13 @@ export const useSalaryStore = defineStore('salary', () => {
     await Promise.all(updates.map(save))
   }
 
+  /** 零用金「動用本月淨額」紀錄變動時，更新該月薪資紀錄的動用總額 */
+  async function setNetDraw(year: number, month: number, amount: number) {
+    const record = findByMonth(year, month)
+    if (!record || Number(record.netDraw || 0) === amount) return
+    await save({ ...record, netDraw: amount })
+  }
+
   return {
     records,
     sortedRecords,
@@ -77,6 +99,7 @@ export const useSalaryStore = defineStore('salary', () => {
     totalInvestment,
     totalConsumerFund,
     followsCurrentFixedExpenses,
-    refreshFixedSnapshots
+    refreshFixedSnapshots,
+    setNetDraw
   }
 })

@@ -4,6 +4,7 @@ import { useToast } from 'primevue/usetoast'
 import type { SalaryAllocation } from '@shared/types'
 import { useSalaryStore, useFixedExpensesStore, useEmergencyFundStore, usePocketMoneyStore } from '@/stores'
 import { mergeFixedSnapshot } from '@/stores/fixedExpenses'
+import { netAmountOf } from '@/stores/salary'
 import { monthKey, todayString } from '@/composables/useFormat'
 
 /** 表單草稿：尚未儲存前沒有 id */
@@ -13,16 +14,6 @@ export type SalaryDraft = Omit<SalaryAllocation, 'id'> & { id?: string }
 export type SalaryMoneyField = 'income' | 'investment' | 'consumerFund' | 'allowance'
 
 type SalaryErrorField = SalaryMoneyField | 'month' | 'payday'
-
-/** 淨額 = (收入 + 上月結餘) - (固定支出 + 緊急備用金 + 投資理財 + 消費基金 + 零用金) */
-export function netAmountOf(record: SalaryDraft): number {
-  const n = (value: number | null | undefined) => Number(value || 0)
-  return (
-    n(record.income) +
-    n(record.previousBalance) -
-    (n(record.fixedExpenses) + n(record.emergencyFund) + n(record.investment) + n(record.consumerFund) + n(record.allowance))
-  )
-}
 
 const NON_NEGATIVE = /^\d+(\.\d+)?$/
 
@@ -124,9 +115,11 @@ export function useSalaryAllocationForm() {
       const year = draftYear.value
       const month = Number(draft.value.month)
       const existing = salary.findByMonth(year, month)
+      // 動用本月淨額由零用金紀錄維護，以目前紀錄為準，避免草稿的舊值覆蓋
       const record: SalaryAllocation = {
         ...draft.value,
         month,
+        netDraw: Number(existing?.netDraw || 0),
         id: existing?.id ?? crypto.randomUUID()
       }
       await salary.save(record)
@@ -197,12 +190,14 @@ export function useSalaryAllocationForm() {
     records,
     () => {
       const d = draft.value
+      const saved = salary.findByMonth(draftYear.value, Number(d.month))
       const untouched = !d.id && !d.income && !d.investment && !d.consumerFund && !d.allowance
-      if (untouched && salary.findByMonth(draftYear.value, Number(d.month))) {
+      if (untouched && saved) {
         loadDraftForCurrentMonth()
         return
       }
       d.previousBalance = calculatePreviousBalance(draftYear.value, Number(d.month))
+      d.netDraw = Number(saved?.netDraw || 0)
     },
     { deep: true }
   )

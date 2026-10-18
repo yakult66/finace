@@ -13,6 +13,7 @@ const SalaryAllocationSchema = new Schema<SalaryAllocation>(
     fixedExpenses: { type: Number, default: 0 },
     emergencyFund: { type: Number, default: 0 },
     previousBalance: { type: Number, default: 0 },
+    netDraw: { type: Number, default: 0 },
     fixedExpensesSnapshot: [
       new Schema(
         { id: String, name: String, amount: Number, linkedLargeExpenseId: String, sourceId: String, locked: Boolean },

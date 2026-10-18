@@ -137,6 +137,13 @@ const saveLabel = computed(() => (isLoading.value ? '儲存中...' : isSaved.val
               </span>
               <span class="text-sm font-medium text-blue-500">{{ formatSignedMoney(draft.emergencyFund || 0, '-') }}</span>
             </div>
+
+            <div v-if="draft.netDraw" class="flex items-center justify-between">
+              <span class="text-sm font-medium text-slate-500 flex items-center gap-1">
+                動用本月淨額 <i class="pi pi-lock text-xs text-slate-400"></i>
+              </span>
+              <span class="text-sm font-medium text-indigo-500">{{ formatSignedMoney(draft.netDraw, '-') }}</span>
+            </div>
           </div>
         </div>
       </div>

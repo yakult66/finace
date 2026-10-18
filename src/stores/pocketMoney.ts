@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { POCKET_CATEGORIES } from '@shared/types'
 import type { PocketMoneyMonthRecord, PocketMoneyTransaction } from '@shared/types'
 import { useSyncedCollection } from '@/services/sync'
-import { useSalaryStore } from './salary'
+import { netAmountOf, useSalaryStore } from './salary'
 
 const sumBy = (transactions: PocketMoneyTransaction[], type: PocketMoneyTransaction['type']) =>
   transactions.filter(t => t.type === type).reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
@@ -46,9 +46,23 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     return fromSalary > 0 ? fromSalary : Number(record.allocatedAllowance || fallback)
   }
 
-  /** 剩餘未花完零用金 = 可用零用金 + 額外收入 - 支出 */
+  /** 該月從本月淨額撥入零用金的總額 */
+  const netDrawOf = (record: PocketMoneyMonthRecord) => sumBy(record.transactions, 'netDraw')
+
+  /** 剩餘未花完零用金 = 可用零用金 + 動用本月淨額 + 額外收入 - 支出 */
   function unspentAllowance(record: PocketMoneyMonthRecord, fallbackAllocated = 0) {
-    return allocatedFor(record, fallbackAllocated) + sumBy(record.transactions, 'income') - sumBy(record.transactions, 'expense')
+    return (
+      allocatedFor(record, fallbackAllocated) +
+      netDrawOf(record) +
+      sumBy(record.transactions, 'income') -
+      sumBy(record.transactions, 'expense')
+    )
+  }
+
+  /** 該月還能動用的本月淨額；沒有薪資紀錄時為 null */
+  function availableNetFor(year: number, month: number): number | null {
+    const record = salary.findByMonth(year, month)
+    return record ? netAmountOf(record) : null
   }
 
   function categoryStatistics(transactions: PocketMoneyTransaction[]) {
@@ -59,10 +73,19 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
       const percentage = totalExpense > 0 ? Number(((amount / totalExpense) * 100).toFixed(1)) : 0
       return { category, amount, percentage }
     })
-    return { totalExpense, totalIncome: sumBy(transactions, 'income'), stats }
+    return {
+      totalExpense,
+      totalIncome: sumBy(transactions, 'income'),
+      totalNetDraw: sumBy(transactions, 'netDraw'),
+      stats
+    }
   }
 
-  function addTransaction(year: number, month: number, tx: Omit<PocketMoneyTransaction, 'id' | 'createdAt'>) {
+  /** 跨模組連動：動用本月淨額的紀錄變動後，同步到當月薪資紀錄 */
+  const syncNetDraw = (record: PocketMoneyMonthRecord) =>
+    salary.setNetDraw(record.year, record.month, netDrawOf(record))
+
+  async function addTransaction(year: number, month: number, tx: Omit<PocketMoneyTransaction, 'id' | 'createdAt'>) {
     const record = findRecord(year, month) ?? {
       id: crypto.randomUUID(),
       year,
@@ -73,15 +96,18 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     record.transactions.unshift({ ...tx, id: crypto.randomUUID(), createdAt: Date.now() })
     record.allocatedAllowance = allocatedFor(record)
     record.updatedAt = Date.now()
-    return save(record)
+    await save(record)
+    if (tx.type === 'netDraw') await syncNetDraw(record)
   }
 
-  function deleteTransaction(year: number, month: number, txId: string) {
+  async function deleteTransaction(year: number, month: number, txId: string) {
     const record = findRecord(year, month)
     if (!record) return
+    const removed = record.transactions.find(t => t.id === txId)
     record.transactions = record.transactions.filter(t => t.id !== txId)
     record.updatedAt = Date.now()
-    return save(record)
+    await save(record)
+    if (removed?.type === 'netDraw') await syncNetDraw(record)
   }
 
   return {
@@ -90,7 +116,9 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     load,
     getMonthRecord,
     allocatedFor,
+    netDrawOf,
     unspentAllowance,
+    availableNetFor,
     categoryStatistics,
     addTransaction,
     deleteTransaction
