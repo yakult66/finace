@@ -1,0 +1,12 @@
+/*
+ * 全站樣式入口：只放框架設定，不寫自訂 CSS 規則。
+ * PrimeVue 的樣式放在 primevue layer（見 main.ts 的 cssLayer），
+ * 排在 Tailwind utilities 之前，所以 Tailwind class 可以直接覆蓋元件樣式。
+ */
+@import 'tailwindcss';
+@import 'tailwindcss-primeui';
+@import 'primeicons/primeicons.css';
+
+@theme {
+  --font-sans: system-ui, 'Segoe UI', Roboto, 'Noto Sans TC', sans-serif;
+}
