@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { POCKET_CATEGORIES } from '@shared/types'
 import type { PocketMoneyMonthRecord, PocketMoneyTransaction } from '@shared/types'
 import { useSyncedCollection } from '@/services/sync'
+import { monthKey } from '@/composables/useFormat'
 import { netAmountOf, useSalaryStore } from './salary'
 
 const sumBy = (transactions: PocketMoneyTransaction[], type: PocketMoneyTransaction['type']) =>
@@ -65,6 +66,45 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     return record ? netAmountOf(record) : null
   }
 
+  /** 上月結餘 = 上月剩餘未花完零用金 + 上月淨額（上月沒有薪資紀錄時為 0） */
+  function previousBalanceFor(year: number, month: number): number {
+    const prevYear = month === 1 ? year - 1 : year
+    const prevMonth = month === 1 ? 12 : month - 1
+    const prevRecord = salary.findByMonth(prevYear, prevMonth)
+    if (!prevRecord) return 0
+
+    const prevAllowance = Number(prevRecord.allowance || 0)
+    return unspentAllowance(getMonthRecord(prevYear, prevMonth), prevAllowance) + netAmountOf(prevRecord)
+  }
+
+  /**
+   * 過去月份的收支或薪資紀錄變動後，依序重算之後各月儲存的上月結餘（淨額跟著變動）。
+   * 回傳有更新的月份 YYYY-MM
+   */
+  async function recalcPreviousBalances(year: number, month: number): Promise<string[]> {
+    const abs = (y: number, m: number) => y * 12 + m
+    const later = salary.records
+      .filter(r => abs(salary.yearOf(r), Number(r.month)) > abs(year, month))
+      .sort((a, b) => abs(salary.yearOf(a), Number(a.month)) - abs(salary.yearOf(b), Number(b.month)))
+
+    const updated: string[] = []
+    for (const record of later) {
+      const y = salary.yearOf(record)
+      const m = Number(record.month)
+      // 上月沒有薪資紀錄時無從推算，保留原本的值
+      const prevYear = m === 1 ? y - 1 : y
+      const prevMonth = m === 1 ? 12 : m - 1
+      if (!salary.findByMonth(prevYear, prevMonth)) continue
+
+      const balance = previousBalanceFor(y, m)
+      if (balance === Number(record.previousBalance || 0)) continue
+      // 依序等待儲存，下一個月才會讀到更新後的結餘
+      await salary.save({ ...record, previousBalance: balance })
+      updated.push(monthKey(y, m))
+    }
+    return updated
+  }
+
   function categoryStatistics(transactions: PocketMoneyTransaction[]) {
     const expenses = transactions.filter(t => t.type === 'expense')
     const totalExpense = sumBy(expenses, 'expense')
@@ -98,16 +138,18 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     record.updatedAt = Date.now()
     await save(record)
     if (tx.type === 'netDraw') await syncNetDraw(record)
+    return recalcPreviousBalances(year, month)
   }
 
   async function deleteTransaction(year: number, month: number, txId: string) {
     const record = findRecord(year, month)
-    if (!record) return
+    if (!record) return []
     const removed = record.transactions.find(t => t.id === txId)
     record.transactions = record.transactions.filter(t => t.id !== txId)
     record.updatedAt = Date.now()
     await save(record)
     if (removed?.type === 'netDraw') await syncNetDraw(record)
+    return recalcPreviousBalances(year, month)
   }
 
   return {
@@ -119,6 +161,8 @@ export const usePocketMoneyStore = defineStore('pocketMoney', () => {
     netDrawOf,
     unspentAllowance,
     availableNetFor,
+    previousBalanceFor,
+    recalcPreviousBalances,
     categoryStatistics,
     addTransaction,
     deleteTransaction

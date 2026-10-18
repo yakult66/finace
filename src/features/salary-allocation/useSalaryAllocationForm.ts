@@ -48,21 +48,7 @@ export function useSalaryAllocationForm() {
   const draftYear = computed(() => Number(String(draft.value.payday ?? '').slice(0, 4)))
 
   // 推算「上月結餘 = 上月剩餘未花完零用金 + 上月淨額」
-  const calculatePreviousBalance = (year: number, month: number): number => {
-    let prevYear = year
-    let prevMonth = month - 1
-    if (prevMonth < 1) {
-      prevMonth = 12
-      prevYear = year - 1
-    }
-
-    const prevRecord = salary.findByMonth(prevYear, prevMonth)
-    if (!prevRecord) return 0
-
-    const prevAllowance = Number(prevRecord.allowance || 0)
-    const unspent = pocket.unspentAllowance(pocket.getMonthRecord(prevYear, prevMonth), prevAllowance)
-    return unspent + netAmountOf(prevRecord)
-  }
+  const calculatePreviousBalance = (year: number, month: number): number => pocket.previousBalanceFor(year, month)
 
   // 跨模組連動：新月份或本月之後的紀錄，細項快照與總額跟著目前的固定支出清單更新；過去月份保留當時的快照
   const syncFixedSnapshot = () => {
@@ -123,6 +109,8 @@ export function useSalaryAllocationForm() {
         id: existing?.id ?? crypto.randomUUID()
       }
       await salary.save(record)
+      // 補存或修改過去月份時，之後各月的上月結餘跟著重算
+      await pocket.recalcPreviousBalances(year, month)
 
       const currentMonth = monthKey(year, month)
       fixed.processMonthlyPayment(currentMonth)

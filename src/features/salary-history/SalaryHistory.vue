@@ -8,7 +8,7 @@ import Tag from 'primevue/tag'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import type { FixedExpenseSnapshotItem, SalaryAllocation } from '@shared/types'
-import { useSalaryStore, useFixedExpensesStore } from '@/stores'
+import { useSalaryStore, useFixedExpensesStore, usePocketMoneyStore } from '@/stores'
 import { netAmountOf } from '@/stores/salary'
 import { formatMoney } from '@/composables/useFormat'
 
@@ -16,6 +16,7 @@ type EditableField = 'income' | 'investment' | 'consumerFund' | 'allowance' | 'e
 
 const salary = useSalaryStore()
 const fixed = useFixedExpensesStore()
+const pocket = usePocketMoneyStore()
 const { records } = storeToRefs(salary)
 const confirm = useConfirm()
 const toast = useToast()
@@ -112,6 +113,8 @@ const handleSaveEdit = async () => {
     try {
       // 動用本月淨額由零用金紀錄維護，以目前紀錄為準
       await salary.save({ ...updated, netDraw: Number(oldRecord.netDraw || 0) })
+      // 該月淨額變動會影響之後各月的上月結餘
+      await pocket.recalcPreviousBalances(salary.yearOf(updated), Number(updated.month))
     } catch (e) {
       console.error('儲存失敗:', e)
       toast.add({ severity: 'error', summary: '儲存失敗', detail: '請稍後再試', life: 3000 })

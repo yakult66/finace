@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -15,11 +16,24 @@ import { formatMoney, formatSignedMoney, todayString, toDateString, fromDateStri
 import { POCKET_CATEGORIES } from '@shared/types'
 import type { PocketCategory, PocketMoneyTransaction } from '@shared/types'
 
+// 預設為當月；補登分頁會傳入過去的年月
+const props = withDefaults(defineProps<{ year?: number; month?: number; backfill?: boolean }>(), {
+  year: () => new Date().getFullYear(),
+  month: () => new Date().getMonth() + 1,
+  backfill: false
+})
+
 const store = usePocketMoneyStore()
 const confirm = useConfirm()
+const toast = useToast()
 
-const currentYear = new Date().getFullYear()
-const currentMonth = new Date().getMonth() + 1
+const currentYear = props.year
+const currentMonth = props.month
+const monthLabel = props.backfill ? `${currentMonth} 月` : '本月'
+
+// 補登時日期限制在該月份內
+const monthStart = new Date(currentYear, currentMonth - 1, 1)
+const monthEnd = new Date(currentYear, currentMonth, 0)
 
 // 當月紀錄（尚無資料時為未儲存的空紀錄）
 const currentRecord = computed(() => store.getMonthRecord(currentYear, currentMonth))
@@ -55,7 +69,7 @@ const formType = ref<TxType>('expense')
 const formCategory = ref<PocketCategory>('餐費')
 const formName = ref('')
 const formAmount = ref<number | null>(null)
-const formDate = ref(todayString())
+const formDate = ref(props.backfill ? toDateString(monthStart) : todayString())
 const formError = ref('')
 
 const formDateModel = computed<Date>({
@@ -65,7 +79,18 @@ const formDateModel = computed<Date>({
   }
 })
 
-const handleAdd = () => {
+// 之後月份的上月結餘被重算時提示
+const notifyRecalculated = (months: string[]) => {
+  if (!months.length) return
+  toast.add({
+    severity: 'info',
+    summary: '已更新之後月份的上月結餘',
+    detail: `${months.join('、')} 的上月結餘與淨額已重新計算`,
+    life: 4000
+  })
+}
+
+const handleAdd = async () => {
   formError.value = ''
   if (!isNetDraw.value && !formName.value.trim()) {
     formError.value = '請輸入項目名稱'
@@ -77,27 +102,29 @@ const handleAdd = () => {
   }
   if (isNetDraw.value) {
     if (availableNet.value === null) {
-      formError.value = '本月尚未儲存薪資配置，無法動用本月淨額'
+      formError.value = `${monthLabel}尚未儲存薪資配置，無法動用${monthLabel}淨額`
       return
     }
     if (formAmount.value > availableNet.value) {
-      formError.value = `動用金額不可超過本月淨額 ${formatMoney(availableNet.value)}`
+      formError.value = `動用金額不可超過${monthLabel}淨額 ${formatMoney(availableNet.value)}`
       return
     }
   }
 
-  store.addTransaction(currentYear, currentMonth, {
+  const tx = {
     type: formType.value,
     // 動用本月淨額不屬於花費類別，統一記為「其他」且不列入類別統計
     category: isNetDraw.value ? '其他' : formCategory.value,
     name: formName.value.trim() || '動用本月淨額',
     amount: formAmount.value,
     date: formDate.value
-  })
+  }
 
   // 重置表單
   formName.value = ''
   formAmount.value = null
+
+  notifyRecalculated(await store.addTransaction(currentYear, currentMonth, tx))
 }
 
 const handleDelete = (tx: PocketMoneyTransaction) => {
@@ -105,13 +132,13 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
     header: '刪除確認',
     message:
       tx.type === 'netDraw'
-        ? `確定要刪除「${tx.name}」嗎？金額 ${formatMoney(tx.amount)} 將退回本月淨額。`
+        ? `確定要刪除「${tx.name}」嗎？金額 ${formatMoney(tx.amount)} 將退回${monthLabel}淨額。`
         : `確定要刪除「${tx.name}」這筆紀錄嗎？`,
     icon: 'pi pi-exclamation-triangle',
     rejectProps: { label: '取消', severity: 'secondary', outlined: true, size: 'small' },
     acceptProps: { label: '刪除', severity: 'danger', size: 'small' },
-    accept: () => {
-      store.deleteTransaction(currentYear, currentMonth, tx.id)
+    accept: async () => {
+      notifyRecalculated(await store.deleteTransaction(currentYear, currentMonth, tx.id))
     }
   })
 }
@@ -123,22 +150,22 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
         <div class="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-          <i class="pi pi-wallet text-indigo-500"></i> 本月薪資分配零用金
+          <i class="pi pi-wallet text-indigo-500"></i> {{ monthLabel }}薪資分配零用金
         </div>
         <div class="text-2xl font-bold text-slate-800">
           {{ formatMoney(allocatedAllowance) }}
         </div>
         <p v-if="categoryStats.totalNetDraw > 0" class="text-xs text-indigo-500 font-medium mt-1">
-          + 動用本月淨額 {{ formatMoney(categoryStats.totalNetDraw) }}
+          + 動用{{ monthLabel }}淨額 {{ formatMoney(categoryStats.totalNetDraw) }}
         </p>
         <p v-if="allocatedAllowance === 0" class="text-xs text-amber-600 font-medium mt-1">
-          💡 請至「當月薪資配置」設定零用金並點選儲存
+          💡 請至「當月薪資配置」設定{{ monthLabel }}零用金並點選儲存
         </p>
       </div>
 
       <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
         <div class="text-xs font-semibold text-emerald-500 mb-1 flex items-center gap-1">
-          <i class="pi pi-arrow-down-left"></i> 本月總收入
+          <i class="pi pi-arrow-down-left"></i> {{ monthLabel }}總收入
         </div>
         <div class="text-2xl font-bold text-emerald-600">
           {{ formatSignedMoney(categoryStats.totalIncome, '+') }}
@@ -147,7 +174,7 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
 
       <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
         <div class="text-xs font-semibold text-rose-500 mb-1 flex items-center gap-1">
-          <i class="pi pi-arrow-up-right"></i> 本月總支出
+          <i class="pi pi-arrow-up-right"></i> {{ monthLabel }}總支出
         </div>
         <div class="text-2xl font-bold text-rose-600">
           {{ formatSignedMoney(categoryStats.totalExpense, '-') }}
@@ -198,7 +225,7 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
     <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
       <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
         <i class="pi pi-plus-circle text-emerald-500"></i>
-        新增當月零用金收支項目
+        {{ backfill ? `補登 ${year} 年 ${month} 月零用金收支項目` : '新增當月零用金收支項目' }}
       </h2>
 
       <!-- 類型 -->
@@ -217,7 +244,7 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
         <p v-if="isNetDraw" class="text-xs font-medium pt-1" :class="availableNet === null ? 'text-amber-600' : 'text-indigo-500'">
           <template v-if="availableNet === null">💡 本月尚未儲存薪資配置，無法動用本月淨額</template>
           <template v-else>
-            本月淨額目前可動用 {{ formatMoney(availableNet) }}，動用後會加入本月零用金並從本月淨額扣除
+            {{ monthLabel }}淨額目前可動用 {{ formatMoney(availableNet) }}，動用後會加入{{ monthLabel }}零用金並從{{ monthLabel }}淨額扣除
           </template>
         </p>
       </div>
@@ -270,6 +297,8 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
             v-model="formDateModel"
             input-id="pm-date"
             date-format="yy-mm-dd"
+            :min-date="backfill ? monthStart : undefined"
+            :max-date="backfill ? monthEnd : undefined"
             size="small"
             fluid
           />
@@ -291,12 +320,12 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
       <div class="p-6 border-b border-slate-100 flex items-center justify-between">
         <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
           <i class="pi pi-list text-indigo-500"></i>
-          本月零用金明細列表 (共 {{ currentRecord.transactions.length }} 筆)
+          {{ monthLabel }}零用金明細列表 (共 {{ currentRecord.transactions.length }} 筆)
         </h2>
       </div>
 
       <div v-if="currentRecord.transactions.length === 0" class="p-8 text-center text-slate-400 text-sm">
-        當月尚無零用金收支紀錄，請於上方新增。
+        {{ monthLabel }}尚無零用金收支紀錄，請於上方新增。
       </div>
 
       <div v-else class="divide-y divide-slate-100">

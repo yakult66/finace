@@ -4,6 +4,7 @@ import type { TabItem } from '@/router/navigation'
 
 const tabs: TabItem[] = [
   { label: '當月收支明細', icon: 'pi pi-sparkles', name: 'pocket-money' },
+  { label: '補登過去月份', icon: 'pi pi-calendar-plus', name: 'pocket-money-backfill' },
   { label: '每月歷史紀錄', icon: 'pi pi-history', name: 'pocket-money-history' }
 ]
 </script>

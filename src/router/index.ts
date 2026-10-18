@@ -65,6 +65,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/features/pocket-money/PocketMoneyCurrent.vue')
       },
       {
+        path: 'backfill',
+        name: 'pocket-money-backfill',
+        component: () => import('@/features/pocket-money/PocketMoneyBackfill.vue')
+      },
+      {
         path: 'history',
         name: 'pocket-money-history',
         component: () => import('@/features/pocket-money/PocketMoneyHistory.vue')
