@@ -183,7 +183,7 @@ const handleDelete = (tx: PocketMoneyTransaction) => {
 
       <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
         <div class="text-xs font-semibold text-indigo-500 mb-1 flex items-center gap-1">
-          <i class="pi pi-sparkles"></i> 剩餘可動用零用金
+          <i class="pi pi-sparkles"></i> 剩餘零用金
         </div>
         <div
           class="text-2xl font-extrabold"

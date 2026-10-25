@@ -29,14 +29,28 @@ const sortedHistory = computed(() => {
   return [...records.value].sort((a, b) => (sortOrder.value === 'desc' ? abs(b) - abs(a) : abs(a) - abs(b)))
 })
 
-const summaryFields: { key: EditableField | 'fixedExpenses' | 'netDraw'; label: string; card: string; text: string }[] = [
+const summaryFields: { key: EditableField | 'fixedExpenses'; label: string; card: string; text: string }[] = [
   { key: 'income', label: '薪資收入', card: 'bg-emerald-50/60 border-emerald-100/50', text: 'text-emerald-600' },
   { key: 'investment', label: '投資規劃', card: 'bg-amber-50/60 border-amber-100/50', text: 'text-amber-600' },
   { key: 'consumerFund', label: '消費基金', card: 'bg-purple-50/60 border-purple-100/50', text: 'text-purple-600' },
   { key: 'allowance', label: '零用金', card: 'bg-indigo-50/60 border-indigo-100/50', text: 'text-indigo-600' },
   { key: 'fixedExpenses', label: '固定支出', card: 'bg-rose-50/60 border-rose-100/50', text: 'text-rose-600' },
-  { key: 'emergencyFund', label: '緊急備用金', card: 'bg-blue-50/60 border-blue-100/50', text: 'text-blue-600' },
-  { key: 'netDraw', label: '動用本月淨額', card: 'bg-violet-50/60 border-violet-100/50', text: 'text-violet-600' }
+  { key: 'emergencyFund', label: '緊急備用金', card: 'bg-blue-50/60 border-blue-100/50', text: 'text-blue-600' }
+]
+
+/** 分配合計 = 固定支出 + 緊急備用金 + 投資規劃 + 消費基金 + 零用金 */
+const allocatedTotalOf = (record: SalaryAllocation) =>
+  (['fixedExpenses', 'emergencyFund', 'investment', 'consumerFund', 'allowance'] as const).reduce(
+    (sum, key) => sum + Number(record[key] || 0),
+    0
+  )
+
+/** 本月淨額計算區塊的各項，依公式順序排列 */
+const netSteps = (record: SalaryAllocation) => [
+  { op: '', label: '薪資收入', value: Number(record.income || 0) },
+  { op: '+', label: '上月結餘', value: Number(record.previousBalance || 0) },
+  { op: '−', label: '分配合計', value: allocatedTotalOf(record) },
+  { op: '−', label: '動用本月淨額', value: Number(record.netDraw || 0) }
 ]
 
 const editFields: { key: EditableField; label: string }[] = [
@@ -218,20 +232,40 @@ const deleteRecord = (id: string) => {
         </div>
 
         <!-- 數據卡片區域 -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mt-4 text-center">
-          <div v-for="field in summaryFields" :key="field.key" class="p-3 rounded-2xl border" :class="field.card">
-            <div class="text-xs font-medium mb-0.5" :class="field.text">{{ field.label }}</div>
-            <div class="text-sm font-bold text-slate-800">{{ formatMoney(record[field.key]) }}</div>
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4 mt-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center content-start">
+            <div v-for="field in summaryFields" :key="field.key" class="p-3 rounded-2xl border" :class="field.card">
+              <div class="text-xs font-medium mb-0.5" :class="field.text">{{ field.label }}</div>
+              <div class="text-sm font-bold text-slate-800">{{ formatMoney(record[field.key]) }}</div>
+            </div>
           </div>
 
-          <div class="bg-slate-100/80 p-3 rounded-2xl border border-slate-200/60">
-            <div class="text-xs text-slate-500 font-medium mb-0.5">本月淨額</div>
+          <!-- 本月淨額計算：直式算式 -->
+          <div class="bg-slate-50 px-4 py-3 rounded-2xl text-sm">
             <div
-              class="text-sm font-extrabold"
-              :class="netAmountOf(record) >= 0 ? 'text-emerald-600' : 'text-rose-600'"
+              v-for="step in netSteps(record)"
+              :key="step.label"
+              class="flex items-center justify-between py-0.5"
+              :class="step.op === '−' ? 'text-rose-600' : 'text-slate-700'"
             >
-              {{ formatMoney(netAmountOf(record)) }}
+              <span class="flex items-center" :class="{ 'text-slate-500': step.op !== '−' }">
+                <span class="w-4 font-bold" :class="{ 'text-slate-400': step.op !== '−' }">{{ step.op }}</span>
+                {{ step.label }}
+              </span>
+              <span class="font-semibold tabular-nums">{{ formatMoney(step.value) }}</span>
             </div>
+            <div class="flex items-center justify-between border-t border-slate-300 mt-1.5 pt-1.5">
+              <span class="font-bold text-slate-700">
+                <span class="inline-block w-4 text-slate-400">=</span>本月淨額
+              </span>
+              <span
+                class="text-base font-extrabold tabular-nums"
+                :class="netAmountOf(record) >= 0 ? 'text-emerald-600' : 'text-rose-600'"
+              >
+                {{ formatMoney(netAmountOf(record)) }}
+              </span>
+            </div>
+            <p class="text-[11px] leading-relaxed text-slate-400 mt-2">分配合計 = 固定支出 + 緊急備用金 + 投資規劃 + 消費基金 + 零用金</p>
           </div>
         </div>
 
